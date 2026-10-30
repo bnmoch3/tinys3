@@ -14,11 +14,30 @@ import (
 	"github.com/peterbourgon/unixtransport"
 )
 
+func withCORS(next http.Handler, origin string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Access-Control-Allow-Origin", origin)
+		h.Set("Access-Control-Allow-Methods", "GET, PUT, HEAD, DELETE, OPTIONS")
+		if reqH := r.Header.Get("Access-Control-Request-Headers"); reqH != "" {
+			h.Set("Access-Control-Allow-Headers", reqH)
+		}
+		h.Set("Access-Control-Expose-Headers", "ETag")
+		h.Add("Vary", "Origin")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func main() {
 	fs := ff.NewFlagSet("tinys3")
 	var (
 		flagAddr = fs.String('a', "addr", ":1234", "S3-compatible endpoint listen address")
 		flagRoot = fs.String('r', "root", "/tmp/tinys3", "root directory for storage")
+		flagCORS = fs.String('c', "cors-origin", "http://localhost:3000", "origin allowed to make browser requests")
 	)
 
 	err := ff.Parse(fs, os.Args[1:])
@@ -49,7 +68,7 @@ func main() {
 	defer ln.Close()
 
 	server := &http.Server{
-		Handler:           mux,
+		Handler:           withCORS(mux, *flagCORS),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
